@@ -1,5 +1,5 @@
 streamlit
-autogen
+pyautogen
 numpy
 python-dotenv
 matplotlib 
