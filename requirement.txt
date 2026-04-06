@@ -1,6 +1,7 @@
-streamlit
+streamlit==1.44.1
 pyautogen==0.2.35
-numpy
+openai>=1.0.0
+tiktoken
 python-dotenv
+numpy
 matplotlib 
-random
