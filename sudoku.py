@@ -1,27 +1,19 @@
 import streamlit as st
 import os
 import time
-from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
 from dotenv import load_dotenv
 import numpy as np
 import matplotlib.pyplot as plt
 import random
 
+# Optional CrewAI imports
+try:
+    from crewai import Agent, Task, Crew
+    CREWAI_AVAILABLE = True
+except ImportError:
+    CREWAI_AVAILABLE = False
 
 load_dotenv(override=True)
-
-
-llm_config = {
-    "config_list": [
-        {
-            "model": "openai/gpt-oss-20b",
-            "api_key": os.getenv("GROQ_API_KEY"),
-            "base_url": "https://api.groq.com/openai/v1"
-        }
-    ],
-    "temperature": 0
-}
-
 
 st.set_page_config(
     page_title="Sudoku Master",
@@ -30,57 +22,61 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# -----------------------------
+# Optional LLM Config (for CrewAI)
+# -----------------------------
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-@st.cache_resource
-def create_agents():
-    user_proxy = UserProxyAgent(
-        name="user_proxy",
-        human_input_mode="NEVER",
-        max_consecutive_auto_reply=10,
-        code_execution_config={
-            "work_dir": "sudoku_game",
-            "use_docker": False
-        },
-        llm_config=llm_config,
-    )
+def get_sudoku_explanation(board, solution):
+    """
+    Optional AI explanation using CrewAI.
+    If CrewAI is unavailable, return fallback text.
+    """
+    if not CREWAI_AVAILABLE or not GROQ_API_KEY:
+        return "Try scanning rows, columns, and 3x3 boxes to find the safest next move."
 
-    sudoku_gen = AssistantAgent(
-        name="sudoku_generator",
-        system_message="Generate a valid 9x9 Sudoku puzzle based on difficulty: easy, medium, hard.",
-        llm_config=llm_config,
-    )
+    try:
+        sudoku_coach = Agent(
+            role="Sudoku Coach",
+            goal="Explain Sudoku solving steps clearly and briefly",
+            backstory="You are an expert Sudoku tutor who gives practical hints.",
+            verbose=False,
+            allow_delegation=False
+        )
 
-    sudoku_solver = AssistantAgent(
-        name="sudoku_solver",
-        system_message="Solve the given valid 9x9 Sudoku puzzle.",
-        llm_config=llm_config,
-    )
+        task = Task(
+            description=f"""
+You are given a Sudoku puzzle and its solution.
 
-    sudoku_validator = AssistantAgent(
-        name="sudoku_validator",
-        system_message="Validate whether the Sudoku puzzle and solution are correct.",
-        llm_config=llm_config,
-    )
+Current puzzle:
+{board.tolist()}
 
-    sudoku_visualizer = AssistantAgent(
-        name="sudoku_visualizer",
-        system_message="Return Sudoku puzzle and solution in JSON format with keys 'puzzle' and 'solution'.",
-        llm_config=llm_config,
-    )
+Solved board:
+{solution.tolist()}
 
-    groupchat = GroupChat(
-        agents=[user_proxy, sudoku_gen, sudoku_solver, sudoku_validator, sudoku_visualizer],
-        messages=[],
-    )
+Give ONE short helpful hint for the player without revealing too much.
+Do not dump the full answer.
+Keep it under 50 words.
+""",
+            expected_output="A short Sudoku hint."
+        )
 
-    groupchat_manager = GroupChatManager(
-        groupchat=groupchat,
-        llm_config=llm_config,
-    )
+        crew = Crew(
+            agents=[sudoku_coach],
+            tasks=[task],
+            verbose=False
+        )
 
-    return user_proxy, groupchat_manager
+        result = crew.kickoff()
+        return str(result)
+
+    except Exception:
+        return "Look for a row, column, or box with only one possible missing number."
 
 
+# -----------------------------
+# Sudoku Logic
+# -----------------------------
 def is_valid(board, row, col, num):
     """Check if num can be placed at board[row][col]"""
 
@@ -145,14 +141,10 @@ def make_puzzle(solution, difficulty="medium"):
 
 
 def generate_sudoku(difficulty):
-    """
-    Generate a brand-new valid Sudoku puzzle every time.
-    This is more reliable than asking the LLM to invent one.
-    """
+    """Generate a brand-new valid Sudoku puzzle every time."""
     solution = generate_full_board()
     puzzle = make_puzzle(solution, difficulty)
     return puzzle, solution
-
 
 
 def draw_sudoku(grid, title="Sudoku Puzzle"):
@@ -164,7 +156,6 @@ def draw_sudoku(grid, title="Sudoku Puzzle"):
         ax.plot([0, 9], [i, i], color='black', linewidth=lw)
         ax.plot([i, i], [0, 9], color='black', linewidth=lw)
 
-  
     for i in range(9):
         for j in range(9):
             value = grid[i, j]
@@ -183,7 +174,6 @@ def draw_sudoku(grid, title="Sudoku Puzzle"):
 
     st.pyplot(fig)
     plt.close(fig)
-
 
 
 def clear_input_widgets():
@@ -212,17 +202,13 @@ def sync_inputs_to_grid():
 
 
 def preload_inputs_from_grid():
-    """
-    Prepare input widget values BEFORE widgets are rendered.
-    Safe because it happens before text_input instantiation.
-    """
+    """Prepare input widget values BEFORE widgets are rendered."""
     for i in range(9):
         for j in range(9):
             if st.session_state.puzzle[i, j] == 0:
                 key = f"input_{i}_{j}"
                 value = st.session_state.user_grid[i, j]
                 st.session_state[key] = "" if value == 0 else str(value)
-
 
 
 def render_editable_sudoku():
@@ -241,7 +227,6 @@ def render_editable_sudoku():
 
             with cols[j]:
                 if original_value != 0:
-                    
                     st.markdown(
                         f"""
                         <div style="
@@ -283,6 +268,7 @@ def render_editable_sudoku():
 
     st.session_state.moves = list(range(moves_count))
 
+
 def reset_user_grid():
     st.session_state.user_grid = st.session_state.puzzle.copy()
     clear_input_widgets()
@@ -297,15 +283,15 @@ def start_new_game(difficulty):
     st.session_state.game_start = time.time()
     st.session_state.moves = []
     st.session_state.current_difficulty = difficulty
+    st.session_state.ai_hint = ""
     clear_input_widgets()
-
 
 
 def main():
     st.markdown("""
     <div style='text-align: center;'>
         <h1 style='color: #2FA26C; font-size: 4rem;'>🎮 Sudoku Master</h1>
-<br><br>
+        <br><br>
     </div>
     """, unsafe_allow_html=True)
 
@@ -320,7 +306,6 @@ def main():
     timer_mode = st.sidebar.checkbox("⏱️ Timer", value=True)
     hints_enabled = st.sidebar.checkbox("💡 Hints Available", value=True)
 
-
     if "current_difficulty" not in st.session_state:
         st.session_state.current_difficulty = difficulty
 
@@ -330,7 +315,6 @@ def main():
     ):
         start_new_game(difficulty)
 
-  
     col1, col2 = st.columns([2, 1])
 
     with col1:
@@ -341,12 +325,10 @@ def main():
             st.markdown(f"**⏱️ Time: {elapsed // 60:02d}:{elapsed % 60:02d}**")
 
         draw_sudoku(st.session_state.user_grid, "Current Puzzle")
-
         render_editable_sudoku()
 
         st.markdown("---")
 
-       
         col_btn1, col_btn2, col_btn3, col_btn4 = st.columns(4)
 
         with col_btn1:
@@ -375,17 +357,16 @@ def main():
                 if len(empty_cells[0]) > 0:
                     idx = np.random.randint(0, len(empty_cells[0]))
                     i, j = empty_cells[0][idx], empty_cells[1][idx]
-
-                   
                     st.session_state.user_grid[i, j] = st.session_state.solution[i, j]
-
                     clear_input_widgets()
                     st.rerun()
                 else:
                     st.info("No empty cells left!")
 
+    
+
     with col2:
-        st.markdown("### 📊 Game States")
+        st.markdown("### 📊 Game Stats")
         st.metric("Moves Made", int(np.count_nonzero(st.session_state.user_grid - st.session_state.puzzle)))
         st.metric("Difficulty", difficulty.title())
 
@@ -399,7 +380,7 @@ def main():
         st.markdown("### 🎮 Controls")
         st.info("""
         **Type numbers** in empty cells below the board  
-        **🔄 New Puzzle** - Generate fresh puzzles
+        **🔄 New Puzzle** - Generate fresh puzzles  
         **♻️ Reset** - Clear your progress  
         **✅ Check** - Validate solution  
         **💡 Hint** - Fill one correct cell  
