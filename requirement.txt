@@ -1,6 +1,6 @@
 streamlit==1.44.1
 numpy
 matplotlib
-
+python-dotenv
 crewai
 litellm
