@@ -25,7 +25,7 @@ st.set_page_config(
 # -----------------------------
 # Optional LLM Config (for CrewAI)
 # -----------------------------
-GROQ_API_KEY = os.getenv"GROQ_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 def get_sudoku_explanation(board, solution):
     """
