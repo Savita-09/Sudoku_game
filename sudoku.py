@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 import time
-from dotenv import load_dotenv
+#from dotenv import load_dotenv
 import numpy as np
 import matplotlib.pyplot as plt
 import random
@@ -25,7 +25,7 @@ st.set_page_config(
 # -----------------------------
 # Optional LLM Config (for CrewAI)
 # -----------------------------
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
 def get_sudoku_explanation(board, solution):
     """
