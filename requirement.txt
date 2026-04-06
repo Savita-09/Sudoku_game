@@ -1,0 +1,6 @@
+streamlit
+autogen
+numpy
+python-dotenv
+matplotlib 
+random
